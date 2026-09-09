@@ -1,0 +1,15 @@
+[package]
+name = "stdio"
+version = "0.3.0"
+edition = "2021"
+description = "Terminal output formatting for the deka toolchain"
+license = "MIT"
+repository = "https://github.com/dekaruntime/stdio"
+keywords = ["deka", "dsc", "cli", "terminal", "stdout"]
+categories = ["command-line-interface", "development-tools"]
+authors = ["Sami Fouad"]
+
+# No dependencies, deliberately. This crate is linked into publicly distributed
+# binaries; it formats lines and writes them to stderr, and has no capability to
+# do anything else. See dekaruntime/rfd#55.
+[dependencies]
