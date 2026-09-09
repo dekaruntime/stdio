@@ -1,13 +1,13 @@
 [package]
-name = "tana-stdio"
+name = "stdio"
 version = "0.2.0"
 edition = "2021"
-description = "Terminal output utilities for Tana projects"
+description = "Terminal output utility"
 license = "MIT"
-repository = "https://github.com/tananetwork/tana-stdio"
-keywords = ["tana", "cli", "terminal", "logging"]
+repository = "https://github.com/dekaruntime/stdio"
+keywords = ["deka", "dsc", "tana", "cli", "terminal", "logging", "stdout"]
 categories = ["command-line-interface", "development-tools"]
-authors = ["Tana Network"]
+authors = ["Sami Fouad"]
 
 [dependencies]
 # Central audit sink dependencies. Kept deliberately light: a blocking HTTP
