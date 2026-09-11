@@ -20,6 +20,19 @@
 //! ```
 //!
 
+use std::collections::HashMap;
+#[cfg(target_arch = "wasm32")]
+use std::sync::{Mutex, OnceLock};
+
+mod terrace_font;
+
+#[cfg(target_arch = "wasm32")]
+static CAPTURED_OUTPUT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+const BRAND_ORANGE: &str = "\x1b[38;2;224;140;11m";
+const BOLD: &str = "\x1b[1m";
+const RESET: &str = "\x1b[0m";
+
 // ============================================================
 // Line builders — pure formatting, no side effects, unit-testable.
 // ============================================================
@@ -49,6 +62,18 @@ fn next_step_line(description: &str, command: &str) -> String {
 /// run, so all output here goes to stderr.
 fn emit_structured(level: &str, component: &str, action: &str, msg: &str, display: &str) {
     let _ = (level, component, action, msg);
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(lock) = CAPTURED_OUTPUT.get() {
+            if let Ok(mut guard) = lock.lock() {
+                if let Some(buf) = guard.as_mut() {
+                    buf.push_str(display);
+                    buf.push('\n');
+                    return;
+                }
+            }
+        }
+    }
     eprintln!("{}", display);
 }
 
@@ -56,6 +81,32 @@ fn emit_structured(level: &str, component: &str, action: &str, msg: &str, displa
 /// default component/action.
 fn emit_line(line: &str) {
     emit_structured("info", "stdio", "raw", line, line);
+}
+
+/// Start capturing output into an in-memory buffer instead of stderr.
+///
+/// Only available on wasm32, where there is no stderr to write to; used by
+/// `@dekaruntime/headless` and wasm.deka.gg to collect formatter output.
+/// Every line emitted through this crate is appended to the buffer until
+/// [`end_capture`] is called.
+#[cfg(target_arch = "wasm32")]
+pub fn begin_capture() {
+    let lock = CAPTURED_OUTPUT.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = lock.lock() {
+        *guard = Some(String::new());
+    }
+}
+
+/// Stop capturing and return everything emitted since [`begin_capture`].
+///
+/// Returns an empty string if capture was never started.
+#[cfg(target_arch = "wasm32")]
+pub fn end_capture() -> String {
+    let lock = CAPTURED_OUTPUT.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = lock.lock() {
+        return guard.take().unwrap_or_default();
+    }
+    String::new()
 }
 
 // ============================================================
@@ -263,6 +314,108 @@ pub fn raw(message: &str) {
     emit_line(message);
 }
 
+/// Advisory note (RFD 55 severity vocabulary: `[error]` / `[warning]` / `[note]`).
+/// Notes are for situations, not failures — a supported path that works
+/// correctly but deserves a nudge (e.g. "not a deka project"). Like every
+/// other line here this goes to stderr; stdout belongs to the program.
+/// Format: `[note] message`
+pub fn note(message: &str) {
+    emit_structured(
+        "note",
+        "stdio",
+        "note",
+        message,
+        &format!("[note] {}", message),
+    );
+}
+
+// ============================================================
+// ASCII art (Terrace figlet font)
+// ============================================================
+
+/// Generate ASCII art banner in brand style using the Terrace font.
+///
+/// Returns the rendered banner wrapped in the brand color and bold escape
+/// sequences; pass it to [`raw`] or print it yourself.
+pub fn ascii(text: &str) -> String {
+    let font = FigFont::parse(terrace_font::TERRACE_FONT);
+    let art = font
+        .render(text)
+        .unwrap_or_else(|| text.to_string())
+        .trim_end()
+        .to_string();
+    format!("{BRAND_ORANGE}{BOLD}{art}{RESET}")
+}
+
+struct FigFont {
+    height: usize,
+    glyphs: HashMap<char, Vec<String>>,
+}
+
+impl FigFont {
+    fn parse(source: &str) -> Self {
+        let mut lines = source.lines();
+        let header = lines.next().unwrap_or_default();
+        let mut header_parts = header.split_whitespace();
+        let signature = header_parts.next().unwrap_or_default();
+        let hardblank = signature.chars().last().unwrap_or('$');
+        let height = header_parts
+            .next()
+            .and_then(|part| part.parse::<usize>().ok())
+            .unwrap_or(1);
+        let comment_lines = header_parts
+            .nth(3)
+            .and_then(|part| part.parse::<usize>().ok())
+            .unwrap_or(0);
+
+        for _ in 0..comment_lines {
+            lines.next();
+        }
+
+        let mut glyphs = HashMap::new();
+        let mut endmark = '@';
+        for codepoint in 32u8..=126u8 {
+            let mut glyph = Vec::with_capacity(height);
+            for i in 0..height {
+                if let Some(line) = lines.next() {
+                    let mut line = line.trim_end_matches('\r').to_string();
+                    if i == 0 && !line.is_empty() {
+                        if let Some(last) = line.chars().last() {
+                            endmark = last;
+                        }
+                    }
+                    while line.ends_with(endmark) {
+                        line.pop();
+                    }
+                    if hardblank != ' ' {
+                        line = line.replace(hardblank, " ");
+                    }
+                    glyph.push(line);
+                } else {
+                    glyph.push(String::new());
+                }
+            }
+            glyphs.insert(codepoint as char, glyph);
+        }
+
+        Self { height, glyphs }
+    }
+
+    fn render(&self, text: &str) -> Option<String> {
+        let mut lines = vec![String::new(); self.height];
+        for ch in text.chars() {
+            let glyph = self.glyphs.get(&ch).or_else(|| self.glyphs.get(&'?'));
+            let glyph = glyph?;
+            for (idx, line) in lines.iter_mut().enumerate() {
+                if let Some(part) = glyph.get(idx) {
+                    line.push_str(part);
+                }
+            }
+        }
+        Some(lines.join("\n"))
+    }
+}
+
 // ============================================================
 // Macros for convenient formatting
 // ============================================================
@@ -307,5 +460,20 @@ mod tests {
     #[test]
     fn next_step_renders_description_and_command() {
         assert_eq!(next_step_line("deploy it", "deka build"), "  -> deploy it: deka build");
+    }
+
+    #[test]
+    fn ascii_wraps_rendered_banner_in_brand_escapes() {
+        let art = ascii("deka");
+        assert!(art.starts_with(BRAND_ORANGE));
+        assert!(art.ends_with(RESET));
+        assert!(art.contains('\n'));
+    }
+
+    #[test]
+    fn figfont_replaces_unknown_chars_with_fallback() {
+        let font = FigFont::parse(terrace_font::TERRACE_FONT);
+        let rendered = font.render("a~b").expect("render");
+        assert_eq!(rendered.lines().count(), font.height);
     }
 }
