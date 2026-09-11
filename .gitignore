@@ -5,5 +5,5 @@ dist/
 bun.lock
 
 # Rust
-rust/target/
-rust/Cargo.lock
+target/
+Cargo.lock
