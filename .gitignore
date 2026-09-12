@@ -6,4 +6,3 @@ bun.lock
 
 # Rust
 target/
-Cargo.lock
