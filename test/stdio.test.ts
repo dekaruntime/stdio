@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
-import chalk from 'chalk'
+import chalk, { chalkStderr } from 'chalk'
 
 import out, {
   ascii,
@@ -38,27 +38,49 @@ const ESC = '\x1b'
 
 const savedNoColor = process.env.NO_COLOR
 const savedLevel = chalk.level
+const savedErrLevel = chalkStderr.level
 
-/** Run `fn` and return the lines it passed to console.log, one entry per call. */
-function printed(fn: () => void): string[] {
-  const spy = spyOn(console, 'log').mockImplementation(() => {})
+/** Run `fn` and return what it passed to console.log (stdout) and process.stderr.write (stderr), one entry per call. */
+function captured(fn: () => void): { out: string[]; err: string[] } {
+  const log = spyOn(console, 'log').mockImplementation(() => {})
+  const err = spyOn(process.stderr, 'write').mockImplementation(() => true)
   try {
     fn()
-    return spy.mock.calls.map((args) => args.join(' '))
+    return {
+      out: log.mock.calls.map((args) => args.join(' ')),
+      err: err.mock.calls.map((args) => String(args[0]).replace(/\n$/, '')),
+    }
   } finally {
-    spy.mockRestore()
+    log.mockRestore()
+    err.mockRestore()
   }
+}
+
+/** The stdout lines of `fn`; fails if it also wrote to stderr. */
+function printed(fn: () => void): string[] {
+  const { out, err } = captured(fn)
+  expect(err).toEqual([])
+  return out
+}
+
+/** The stderr lines of `fn`; fails if it also wrote to stdout. */
+function printedErr(fn: () => void): string[] {
+  const { out, err } = captured(fn)
+  expect(out).toEqual([])
+  return err
 }
 
 beforeEach(() => {
   delete process.env.NO_COLOR
   chalk.level = 0
+  chalkStderr.level = 0
 })
 
 afterEach(() => {
   if (savedNoColor === undefined) delete process.env.NO_COLOR
   else process.env.NO_COLOR = savedNoColor
   chalk.level = savedLevel
+  chalkStderr.level = savedErrLevel
 })
 
 describe('lines, without colour', () => {
@@ -67,12 +89,12 @@ describe('lines, without colour', () => {
   })
 
   test('error', () => {
-    expect(printed(() => error('build', 'compilation failed'))).toEqual(['[build] compilation failed'])
+    expect(printedErr(() => error('build', 'compilation failed'))).toEqual(['[build] compilation failed'])
   })
 
   test('warn with a name and with a message only', () => {
-    expect(printed(() => warn('cache', 'stale entries'))).toEqual(['● [cache] stale entries'])
-    expect(printed(() => warn('disk is almost full'))).toEqual(['● disk is almost full'])
+    expect(printedErr(() => warn('cache', 'stale entries'))).toEqual(['● [cache] stale entries'])
+    expect(printedErr(() => warn('disk is almost full'))).toEqual(['● disk is almost full'])
   })
 
   test('status', () => {
@@ -90,7 +112,7 @@ describe('lines, without colour', () => {
 
   test('success and fail', () => {
     expect(printed(() => success('build complete'))).toEqual(['✓ build complete'])
-    expect(printed(() => fail('build failed'))).toEqual(['✗ build failed'])
+    expect(printedErr(() => fail('build failed'))).toEqual(['✗ build failed'])
   })
 
   test('info pads the label to a fixed column', () => {
@@ -118,22 +140,23 @@ describe('lines, without colour', () => {
   })
 
   test('diagnostic', () => {
-    expect(printed(() => diagnostic('config', 'unknown key "colour"'))).toEqual([
+    expect(printedErr(() => diagnostic('config', 'unknown key "colour"'))).toEqual([
       '⚠ [config] unknown key "colour"',
     ])
   })
 
-  test('fatal prints the error and exits with status 1', () => {
+  test('fatal prints the error to stderr and exits with status 1', () => {
     const exit = spyOn(process, 'exit').mockImplementation(((code?: number) => {
       throw new Error(`exit ${code}`)
     }) as never)
-    const spy = spyOn(console, 'log').mockImplementation(() => {})
     try {
-      expect(() => fatal('build', 'cannot continue')).toThrow('exit 1')
-      expect(spy.mock.calls).toEqual([['[build] cannot continue']])
+      const { out, err } = captured(() => {
+        expect(() => fatal('build', 'cannot continue')).toThrow('exit 1')
+      })
+      expect(err).toEqual(['[build] cannot continue'])
+      expect(out).toEqual([])
       expect(exit).toHaveBeenCalledWith(1)
     } finally {
-      spy.mockRestore()
       exit.mockRestore()
     }
   })
@@ -150,19 +173,63 @@ describe('lines, without colour', () => {
   })
 })
 
+describe('streams', () => {
+  test('problems go to stderr and nothing else does', () => {
+    const { out, err } = captured(() => {
+      error('a', 'b')
+      warn('a', 'b')
+      warn('a')
+      fail('a')
+      diagnostic('a', 'b')
+    })
+    expect(out).toEqual([])
+    expect(err).toHaveLength(5)
+  })
+
+  test('everything else goes to stdout and nothing to stderr', () => {
+    const { out, err } = captured(() => {
+      log('a', 'b')
+      info('a', 'b')
+      success('a')
+      status('a', 'b', true)
+      status('a', 'b', false)
+      hint('a')
+      detail('a')
+      nextStep('a', 'b')
+      nextSteps([{ description: 'a', command: 'b' }])
+      header('a')
+      blank()
+      banner()
+      startBanner({ title: 'zega', urls: [] })
+    })
+    expect(err).toEqual([])
+    expect(out.length).toBeGreaterThan(10)
+  })
+
+  test('in a real process, an error is on stderr and a log line on stdout', () => {
+    const entry = new URL('../src/index.ts', import.meta.url).pathname
+    const script = `import { error, log } from ${JSON.stringify(entry)}; log('build', 'started'); error('build', 'failed')`
+    const result = Bun.spawnSync([process.execPath, '-e', script])
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout.toString()).toBe('[build] started\n')
+    expect(result.stderr.toString()).toBe('[build] failed\n')
+  })
+})
+
 describe('lines, with colour', () => {
   beforeEach(() => {
     chalk.level = 3
+    chalkStderr.level = 3
   })
 
   test('error is a cyan bracket and a red message', () => {
-    expect(printed(() => error('build', 'compilation failed'))).toEqual([
+    expect(printedErr(() => error('build', 'compilation failed'))).toEqual([
       `${ESC}[36m[build]${ESC}[39m ${ESC}[31mcompilation failed${ESC}[39m`,
     ])
   })
 
   test('warn is a yellow dot and a cyan name', () => {
-    expect(printed(() => warn('cache', 'stale'))).toEqual([
+    expect(printedErr(() => warn('cache', 'stale'))).toEqual([
       `${ESC}[33m●${ESC}[39m ${ESC}[36m[cache]${ESC}[39m stale`,
     ])
   })
@@ -195,11 +262,12 @@ describe('lines, with colour', () => {
 describe('NO_COLOR', () => {
   beforeEach(() => {
     chalk.level = 3
+    chalkStderr.level = 3
   })
 
   test('switches every function to plain text even when the terminal supports colour', () => {
     process.env.NO_COLOR = '1'
-    const lines = printed(() => {
+    const { out, err } = captured(() => {
       banner()
       startBanner({ title: 'zega', urls: [{ label: 'Local', url: 'http://localhost:1/' }], hint: { key: 'h', action: 'show help' } })
       log('a', 'b')
@@ -217,6 +285,7 @@ describe('NO_COLOR', () => {
       nextStep('a', 'b')
       diagnostic('a', 'b')
     })
+    const lines = [...out, ...err]
     expect(lines.length).toBeGreaterThan(10)
     for (const line of lines) {
       expect(line).not.toContain(ESC)
@@ -225,7 +294,7 @@ describe('NO_COLOR', () => {
 
   test('an empty NO_COLOR does not switch colour off', () => {
     process.env.NO_COLOR = ''
-    expect(printed(() => error('a', 'b'))[0]).toContain(ESC)
+    expect(printedErr(() => error('a', 'b'))[0]).toContain(ESC)
   })
 })
 
@@ -238,7 +307,7 @@ describe('colour detection in a real process', () => {
     delete base.FORCE_COLOR
     const result = Bun.spawnSync([process.execPath, '-e', script], { env: { ...base, ...env } })
     expect(result.exitCode).toBe(0)
-    return result.stdout.toString()
+    return result.stderr.toString()
   }
 
   test('output that is not a terminal has no colour', () => {
@@ -265,6 +334,7 @@ describe('banners', () => {
 
   test('the logo colour is zega green and bold when colour is on', () => {
     chalk.level = 3
+    chalkStderr.level = 3
     expect(printed(() => banner())[0]).toContain(`${ESC}[1m${ESC}[38;2;60;203;119m`)
   })
 
@@ -332,6 +402,7 @@ describe('banners', () => {
 
   test('with colour: green arrow, bold label, cyan address; dim and address-less entries are dim', () => {
     chalk.level = 3
+    chalkStderr.level = 3
     const [text] = printed(() =>
       startBanner({
         title: 'zega',

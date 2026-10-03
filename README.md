@@ -67,10 +67,14 @@ console.log(ascii('my app')) // any text, in the Terrace font
   → start the server: npx zega dev
 ```
 
-The functions print with `console.log`. Also exported: `status`, `header`,
-`blank`, `fail`, `info`, `hint`, `detail`, `nextSteps`, `diagnostic` and
-`fatal` (prints the error and exits with status 1). Everything is also
-available as `out.*` and as the default export.
+As in the Rust crate, anything a script would treat as a problem goes to
+**stderr**: `error`, `warn`, `fail`, `diagnostic` and `fatal` (which prints the
+error and exits with status 1). Everything else (`log`, `info`, `success`,
+`status`, `hint`, `detail`, `nextStep`, `nextSteps`, `header`, `banner`,
+`startBanner`) goes to **stdout**, so a command that prints JSON on stdout can
+still report errors without corrupting it. Colour is decided per stream. `blank`
+prints an empty line to stdout. Everything is also available as `out.*` and as
+the default export.
 
 ### `banner()`
 

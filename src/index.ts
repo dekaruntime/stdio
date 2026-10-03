@@ -9,13 +9,17 @@
  * on only when the terminal supports it, and is off for NO_COLOR and for
  * output that is not a terminal.
  *
+ * Streams, as in the Rust crate: anything a script would treat as a problem
+ * (error, warn, fail, diagnostic, fatal) goes to stderr; everything else (log,
+ * info, success, status, hint, detail, next steps, banners) goes to stdout.
+ *
  * Format: [action] value
  * - Cyan brackets for identifiers
  * - Green dot for success, red dot for failure
  * - Red text for errors, yellow for warnings
  */
 
-import chalk, { Chalk, type ChalkInstance } from 'chalk'
+import chalk, { chalkStderr, Chalk, type ChalkInstance } from 'chalk'
 import figlet from 'figlet'
 
 import { TERRACE_FONT } from './font.js'
@@ -27,12 +31,22 @@ const ZEGA_GREEN = '#3CCB77'
 const plain = new Chalk({ level: 0 })
 
 /**
- * The chalk to paint with right now. `chalk` itself detects whether stdout is a
- * colour-capable terminal (and a non-terminal gets no colour); NO_COLOR
- * (https://no-color.org: set and not empty) switches colour off on top of that.
+ * The chalk to paint with right now, for a line going to stdout or stderr.
+ * chalk detects whether that stream is a colour-capable terminal (a non-terminal
+ * gets no colour); NO_COLOR (https://no-color.org: set and not empty) switches
+ * colour off on top of that.
  */
-function ink(): ChalkInstance {
-  return process.env.NO_COLOR ? plain : chalk
+function ink(stream: 'out' | 'err' = 'out'): ChalkInstance {
+  if (process.env.NO_COLOR) return plain
+  return stream === 'err' ? chalkStderr : chalk
+}
+
+/**
+ * Write one line to stderr. process.stderr.write rather than console.error,
+ * because Bun's console.error adds its own red when colour is forced.
+ */
+function problem(line: string): void {
+  process.stderr.write(`${line}\n`)
 }
 
 function green(text: string): string {
@@ -175,8 +189,8 @@ export function log(action: string, value: string): void {
  * [action] message (cyan bracket, red message)
  */
 export function error(action: string, message: string): void {
-  const c = ink()
-  console.log(`${c.cyan(`[${action}]`)} ${c.red(message)}`)
+  const c = ink('err')
+  problem(`${c.cyan(`[${action}]`)} ${c.red(message)}`)
 }
 
 /**
@@ -185,11 +199,11 @@ export function error(action: string, message: string): void {
  * ● message - if only one arg
  */
 export function warn(name: string, message?: string): void {
-  const c = ink()
+  const c = ink('err')
   if (message !== undefined) {
-    console.log(`${c.yellow('●')} ${c.cyan(`[${name}]`)} ${message}`)
+    problem(`${c.yellow('●')} ${c.cyan(`[${name}]`)} ${message}`)
   } else {
-    console.log(`${c.yellow('●')} ${name}`)
+    problem(`${c.yellow('●')} ${name}`)
   }
 }
 
@@ -233,7 +247,7 @@ export function success(message: string): void {
  * ✗ message
  */
 export function fail(message: string): void {
-  console.log(`${ink().red('✗')} ${message}`)
+  problem(`${ink('err').red('✗')} ${message}`)
 }
 
 /**
@@ -289,8 +303,8 @@ export function nextSteps(steps: Array<{ description: string; command: string }>
  * ⚠ [component] message
  */
 export function diagnostic(component: string, message: string): void {
-  const c = ink()
-  console.log(`${c.yellow('⚠')} ${c.cyan(`[${component}]`)} ${c.yellow(message)}`)
+  const c = ink('err')
+  problem(`${c.yellow('⚠')} ${c.cyan(`[${component}]`)} ${c.yellow(message)}`)
 }
 
 // Namespace export for cleaner imports
