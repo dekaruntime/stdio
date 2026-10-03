@@ -4,6 +4,7 @@ import chalk, { chalkStderr } from 'chalk'
 import out, {
   ascii,
   banner,
+  logo,
   blank,
   detail,
   diagnostic,
@@ -31,6 +32,15 @@ const ZEGA = [
   '░█████████  ░███████   ░█████░██  ░█████░██ ',
   '                             ░██            ',
   '                       ░███████',
+]
+
+// What `logo()` draws, without colour: four fixed glyphs, five rows, two tones (▐ edge, █ body).
+const LOGO = [
+  '▐██████▐██████▐██████▐██████',
+  '   ▐██ ▐██    ▐██    ▐██ ▐██',
+  '  ▐██  ▐████  ▐██ ▐██▐██████',
+  ' ▐██   ▐██    ▐██  ▐█▐██ ▐██',
+  '▐██████▐██████▐██████▐██ ▐██',
 ]
 
 const RULE = '━'.repeat(50)
@@ -328,14 +338,50 @@ describe('banners', () => {
     expect(ascii('zega').split('\n')).toEqual(ZEGA)
   })
 
-  test('banner prints the zega logo', () => {
-    expect(printed(() => banner())).toEqual([ZEGA.join('\n')])
+  test('banner prints the zega logo: five rows of blocks', () => {
+    expect(printed(() => banner())).toEqual([LOGO.join('\n')])
+    expect(logo()).toBe(LOGO.join('\n'))
   })
 
-  test('the logo colour is zega green and bold when colour is on', () => {
+  test('the logo is drawn in two true colour greens: #55FF55 body, #00AA00 edges', () => {
     chalk.level = 3
-    chalkStderr.level = 3
-    expect(printed(() => banner())[0]).toContain(`${ESC}[1m${ESC}[38;2;60;203;119m`)
+    const main = (text: string) => `${ESC}[38;2;85;255;85m${text}${ESC}[39m`
+    const shade = (text: string) => `${ESC}[38;2;0;170;0m${text}${ESC}[39m`
+    const rows = logo().split('\n')
+    expect(rows[0]).toBe(`${shade('▐')}${main('██████')}`.repeat(4))
+    expect(rows[1]).toBe(
+      `   ${shade('▐')}${main('██')} ${shade('▐')}${main('██')}    ${shade('▐')}${main('██')}    ${shade('▐')}${main('██')} ${shade('▐')}${main('██')}`,
+    )
+  })
+
+  test('without true colour the logo falls back to ANSI bright green (92) and green (32)', () => {
+    for (const level of [1, 2] as const) {
+      chalk.level = level
+      expect(logo().split('\n')[0]).toBe(`${ESC}[32m▐${ESC}[39m${ESC}[92m██████${ESC}[39m`.repeat(4))
+    }
+  })
+
+  test('with colour off the logo is plain blocks', () => {
+    chalk.level = 3
+    process.env.NO_COLOR = '1'
+    expect(logo()).toBe(LOGO.join('\n'))
+  })
+
+  test('in a real process, piped output gets plain blocks and a colour terminal gets true colour', () => {
+    const entry = new URL('../src/index.ts', import.meta.url).pathname
+    const script = `import { banner } from ${JSON.stringify(entry)}; banner()`
+    const base = { ...process.env }
+    delete base.NO_COLOR
+    delete base.FORCE_COLOR
+    const piped = Bun.spawnSync([process.execPath, '-e', script], { env: base })
+    expect(piped.stdout.toString()).toBe(`${LOGO.join('\n')}\n`)
+    const colour = Bun.spawnSync([process.execPath, '-e', script], { env: { ...base, FORCE_COLOR: '3' } })
+    expect(colour.stdout.toString()).toContain(`${ESC}[38;2;85;255;85m██████${ESC}[39m`)
+  })
+
+  test('startBanner draws the zega logo when no title is given', () => {
+    const [text] = printed(() => startBanner({ urls: [] }))
+    expect(text!.split('\n').slice(0, LOGO.length + 2)).toEqual(['', ...LOGO, ''])
   })
 
   test('startBanner prints title, tagline, rules, aligned entries and the hint', () => {

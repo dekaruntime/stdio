@@ -62,7 +62,7 @@ let fontLoaded = false
  * uses, so both draw the same glyphs. No leading or trailing blank lines.
  *
  * @example
- * console.log(ascii('zega'))
+ * console.log(ascii('my app'))
  */
 export function ascii(text: string): string {
   if (!fontLoaded) {
@@ -77,11 +77,42 @@ export function ascii(text: string): string {
   return ink().bold(green(art))
 }
 
+// The zega logo: four fixed glyphs (z, e, g, a), five rows of block characters,
+// drawn in two tones: ▐ is the shaded left edge of a stroke, █ the body. It is
+// hand-encoded art, not rendered from a font file, so it cannot draw other text.
+const LOGO_ROWS = [
+  '▐██████▐██████▐██████▐██████',
+  '   ▐██ ▐██    ▐██    ▐██ ▐██',
+  '  ▐██  ▐████  ▐██ ▐██▐██████',
+  ' ▐██   ▐██    ▐██  ▐█▐██ ▐██',
+  '▐██████▐██████▐██████▐██ ▐██',
+]
+
+// The logo's two greens, as true colour: the 16-colour VGA green and bright green.
+const LOGO_MAIN = '#55FF55'
+const LOGO_SHADE = '#00AA00'
+
+/**
+ * The zega logo as text: five rows of blocks in two greens ({@link LOGO_MAIN}
+ * for the body, {@link LOGO_SHADE} for the shaded edges). True colour where the
+ * terminal has it, otherwise ANSI bright green and green (92 and 32), and plain
+ * blocks when colour is off (NO_COLOR, or output that is not a terminal).
+ */
+export function logo(): string {
+  const c = ink()
+  const trueColor = c.level >= 3
+  const main = trueColor ? c.hex(LOGO_MAIN) : c.greenBright
+  const shade = trueColor ? c.hex(LOGO_SHADE) : c.green
+  return LOGO_ROWS.map((row) =>
+    row.replace(/█+|▐+/g, (run) => (run.startsWith('█') ? main(run) : shade(run))),
+  ).join('\n')
+}
+
 /**
  * Print the zega logo.
  */
 export function banner(): void {
-  console.log(ascii('zega'))
+  console.log(logo())
 }
 
 export interface BannerEntry {
@@ -98,8 +129,8 @@ export interface BannerEntry {
 }
 
 export interface StartBannerOptions {
-  /** Drawn as the ASCII logo, e.g. `zega`. */
-  title: string
+  /** Drawn in the Terrace font, e.g. `my app`. Leave out for the zega logo. */
+  title?: string
   /** One grey line under the logo. */
   tagline?: string
   /** What is running where, one line each, labels aligned. */
@@ -118,7 +149,7 @@ const CLEAR_SCREEN = '\x1b[2J\x1b[H'
  *
  * ```
  *
- * <ASCII title>
+ * <the zega logo, or an ASCII title>
  *
  *   tagline
  *
@@ -143,7 +174,7 @@ export function startBanner(options: StartBannerOptions): void {
 
   const labelWidth = Math.max(0, ...urls.map((entry) => entry.label.length + 1)) + 1
 
-  const lines: string[] = ['', ascii(title), '']
+  const lines: string[] = ['', title === undefined ? logo() : ascii(title), '']
   if (tagline !== undefined) {
     lines.push(c.gray(`  ${tagline}`), '')
   }
@@ -310,6 +341,7 @@ export function diagnostic(component: string, message: string): void {
 // Namespace export for cleaner imports
 export const out = {
   ascii,
+  logo,
   banner,
   startBanner,
   log,

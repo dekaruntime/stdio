@@ -9,7 +9,7 @@ the same idea live in this repository:
 | Rust       | [`stdio`](https://crates.io/crates/stdio) on crates.io | `cargo add stdio`           |
 | TypeScript | [`@zegadb/stdio`](https://www.npmjs.com/package/@zegadb/stdio) on npm | `bun add @zegadb/stdio` (or `npm install @zegadb/stdio`) |
 
-Both draw the banner with the same Terrace font (`src/terrace-font.flf`).
+`ascii(text)` draws arbitrary text with the same Terrace font in both (`src/terrace-font.flf`). The block-letter zega logo (`banner()`) is TypeScript only.
 
 **They only format text and write it to the terminal.** No files are read or
 written, no network calls are made, and there is no configuration. Colour (TypeScript)
@@ -56,7 +56,7 @@ error('build', 'compilation failed')
 success('build complete')
 nextStep('start the server', 'npx zega dev')
 
-console.log(ascii('my app')) // any text, in the Terrace font
+console.log(ascii('my app')) // any text, in the Terrace font (zega green)
 ```
 
 ```text
@@ -76,18 +76,22 @@ still report errors without corrupting it. Colour is decided per stream. `blank`
 prints an empty line to stdout. Everything is also available as `out.*` and as
 the default export.
 
-### `banner()`
+### `banner()` and `logo()`
 
-Prints the zega logo, in zega green when colour is supported:
+`banner()` prints the zega logo; `logo()` returns it as a string. It is five
+rows of block characters in two tones (a lighter body and a darker edge on the
+left of each stroke), fixed art for the four letters z, e, g, a, so it cannot
+draw other text (use `ascii(text)` for that). Colours: body `#55FF55`, edge
+`#00AA00` (the 16-colour VGA bright green and green). True colour where the
+terminal supports it, otherwise ANSI bright green (92) and green (32), and
+plain blocks for `NO_COLOR` or output that is not a terminal:
 
 ```text
-░█████████  ░███████   ░████████  ░██████   
-     ░███  ░██    ░██ ░██    ░██       ░██  
-   ░███    ░█████████ ░██    ░██  ░███████  
- ░███      ░██        ░██   ░███ ░██   ░██  
-░█████████  ░███████   ░█████░██  ░█████░██ 
-                             ░██            
-                       ░███████
+▐██████▐██████▐██████▐██████
+   ▐██ ▐██    ▐██    ▐██ ▐██
+  ▐██  ▐████  ▐██ ▐██▐██████
+ ▐██   ▐██    ▐██  ▐█▐██ ▐██
+▐██████▐██████▐██████▐██ ▐██
 ```
 
 ### `startBanner()`
@@ -99,7 +103,6 @@ what is running where, and a hint.
 import { startBanner } from '@zegadb/stdio'
 
 startBanner({
-  title: 'zega',
   tagline: 'The graph database',
   urls: [
     { label: 'Local', url: 'http://localhost:8506/' },
@@ -112,13 +115,11 @@ startBanner({
 
 ```text
 
-░█████████  ░███████   ░████████  ░██████   
-     ░███  ░██    ░██ ░██    ░██       ░██  
-   ░███    ░█████████ ░██    ░██  ░███████  
- ░███      ░██        ░██   ░███ ░██   ░██  
-░█████████  ░███████   ░█████░██  ░█████░██ 
-                             ░██            
-                       ░███████
+▐██████▐██████▐██████▐██████
+   ▐██ ▐██    ▐██    ▐██ ▐██
+  ▐██  ▐████  ▐██ ▐██▐██████
+ ▐██   ▐██    ▐██  ▐█▐██ ▐██
+▐██████▐██████▐██████▐██ ▐██
 
   The graph database
 
@@ -134,6 +135,9 @@ startBanner({
   press h to show help
 
 ```
+
+Leave out `title` for the zega logo, or pass `title: 'my app'` to draw that text
+in the Terrace font instead.
 
 Each entry in `urls` is `{ label, url?, status?, hint?, dim? }`: the label is
 bold and aligned with the others, the address is cyan, `status` appears in
