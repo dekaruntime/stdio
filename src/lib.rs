@@ -1,6 +1,6 @@
-//! # tana-stdio
+//! # stdio
 //!
-//! Terminal output utilities for Tana projects.
+//! Terminal output formatting for zega tools.
 //! Consistent formatting across CLI, services, and tools.
 //!
 //! ## Format
@@ -85,10 +85,9 @@ fn emit_line(line: &str) {
 
 /// Start capturing output into an in-memory buffer instead of stderr.
 ///
-/// Only available on wasm32, where there is no stderr to write to; used by
-/// `@dekaruntime/headless` and wasm.deka.gg to collect formatter output.
-/// Every line emitted through this crate is appended to the buffer until
-/// [`end_capture`] is called.
+/// Only available on wasm32, where there is no stderr to write to; embedders
+/// use it to collect formatter output in memory. Every line emitted through
+/// this crate is appended to the buffer until [`end_capture`] is called.
 #[cfg(target_arch = "wasm32")]
 pub fn begin_capture() {
     let lock = CAPTURED_OUTPUT.get_or_init(|| Mutex::new(None));
@@ -264,13 +263,7 @@ pub fn fail(message: &str) {
 /// // Output:   port       8506
 /// ```
 pub fn info(label: &str, value: &str) {
-    emit_structured(
-        "info",
-        label,
-        "info",
-        value,
-        &info_line(label, value),
-    );
+    emit_structured("info", label, "info", value, &info_line(label, value));
 }
 
 /// Hint in subdued format
@@ -314,9 +307,9 @@ pub fn raw(message: &str) {
     emit_line(message);
 }
 
-/// Advisory note (RFD 55 severity vocabulary: `[error]` / `[warning]` / `[note]`).
+/// Advisory note (severity vocabulary: `[error]` / `[warning]` / `[note]`).
 /// Notes are for situations, not failures — a supported path that works
-/// correctly but deserves a nudge (e.g. "not a deka project"). Like every
+/// correctly but deserves a nudge (e.g. "no config file found"). Like every
 /// other line here this goes to stderr; stdout belongs to the program.
 /// Format: `[note] message`
 pub fn note(message: &str) {
@@ -447,8 +440,14 @@ mod tests {
 
     #[test]
     fn status_renders_both_outcomes() {
-        assert_eq!(status_line("database", "connected", true), "[ok] [database] connected");
-        assert_eq!(status_line("database", "refused", false), "[fail] [database] refused");
+        assert_eq!(
+            status_line("database", "connected", true),
+            "[ok] [database] connected"
+        );
+        assert_eq!(
+            status_line("database", "refused", false),
+            "[fail] [database] refused"
+        );
     }
 
     #[test]
@@ -459,7 +458,10 @@ mod tests {
 
     #[test]
     fn next_step_renders_description_and_command() {
-        assert_eq!(next_step_line("deploy it", "deka build"), "  -> deploy it: deka build");
+        assert_eq!(
+            next_step_line("deploy it", "deka build"),
+            "  -> deploy it: deka build"
+        );
     }
 
     #[test]

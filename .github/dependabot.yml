@@ -9,3 +9,7 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+  - package-ecosystem: "npm" # the TypeScript package
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -1,15 +1,25 @@
 [package]
 name = "stdio"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
-description = "Terminal output formatting for the deka toolchain"
+description = "Terminal output formatting for zega tools"
 license = "MIT"
-repository = "https://github.com/dekaruntime/stdio"
-keywords = ["deka", "dsc", "cli", "terminal", "stdout"]
+repository = "https://github.com/zegadb/stdio"
+homepage = "https://zega.dev"
+readme = "README.md"
+keywords = ["cli", "terminal", "stdout", "diagnostics", "zega"]
 categories = ["command-line-interface", "development-tools"]
 authors = ["Sami Fouad"]
+# The crate only; the TypeScript package (@zegadb/stdio) shares this repository.
+include = [
+    "/src/lib.rs",
+    "/src/terrace_font.rs",
+    "/src/terrace-font.flf",
+    "/README.md",
+    "/LICENSE",
+]
 
 # No dependencies, deliberately. This crate is linked into publicly distributed
 # binaries; it formats lines and writes them to stderr, and has no capability to
-# do anything else. See dekaruntime/rfd#55.
+# do anything else.
 [dependencies]
